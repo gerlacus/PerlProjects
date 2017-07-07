@@ -7,7 +7,7 @@ I will grow this repository as I develop more Perl code, but for now it is in an
 #
 
 <h3>Projects:</h3>
-<h5>Pyramid Generator (2test.pl)</h5>
+<h5>Triangle Generator (2test_TriangleGenerator.pl)</h5>
 Simple program that takes input size / string from user and creates a pyramid of said string as tall as the size specified.
 Whipped up in a few minutes, this was more or less a way to familiarize myself with the conventions of Perl (e.g. $calars and foreach loop syntax).
 
