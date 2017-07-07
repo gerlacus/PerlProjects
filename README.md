@@ -13,7 +13,7 @@ Whipped up in a few minutes, this was more or less a way to familiarize myself w
 
 <h5>Happy Number Finder (3test_HappyNumbers.pl)</h5>
 Takes input of a positive integer and checks whether or not that integer is 'happy' -- that is, the sum of each of its digits squared and then repeated with this new sum over and over will eventually equal 1.
-For example, 19 is a happy number:
+For example, 19 is a happy number: \n
 19 -> 1^2 + 9^2 = 1 + 81 = 82
 82 -> 8^2 + 2^2 = 64 + 4 = 68
 68 -> 6^2 + 8^2 = 36 + 64 = 100
