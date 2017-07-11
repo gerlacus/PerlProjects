@@ -8,17 +8,32 @@ use strict;
 use warnings;
 use v5.18.0;
 
+# Get rid of pesky smartmatch warnings
+no if $] >= 5.017011, warnings => "experimental::smartmatch";
+
+die "Usage: $0 <file> <word> <threshold (optional)>\n" if ((@ARGV < 2) || (@ARGV > 3));
+#my $filename = shift or die "Usage: $0 <file> <word> <threshold>\n";
 my $filename = $ARGV[0];
 my $searchString = lc $ARGV[1];
-
-my $accuracyThreshold = $ARGV[2];               # All accuracies >= this value will be searched
+my $accuracyThreshold = 0.5;
+$accuracyThreshold = $ARGV[2] if (@ARGV == 3);
 
 my %accurateCounts = ();
 my $totalAccuratesInFile = 0;                   # Total word count tally of all variations within file
+my @uniqueFoundPerms = ();                      # 
 
-no if $] >= 5.017011, warnings => "experimental::smartmatch";
 
-# TODO: remove test eventually
+# Check to see if valid search string (single word of alpha characters)
+if (($searchString =~ /\W/) || ($searchString =~ /\d+/)) {
+    die "Invalid search string (must be single word, with no spaces or numbers).\n";
+}
+
+# Make sure accuracy threshold is in proper bounds (between 0 and 1)
+if ( (@ARGV != 3) || ($accuracyThreshold =~ /\D/) || ($accuracyThreshold < 0) || ($accuracyThreshold > 1)) {
+    print "Accuracy threshold missing or invalid (0 <= threshold <= 1). Continuing with default threshold of 0.5.\n";
+    $accuracyThreshold = 0.5;
+}
+
 my %fuzzKeys = ( a => ['a', 'q', 'w', 's', 'z'],
     b => ['b', 'g', 'h', 'v', 'n'],
     c => ['c', 'd', 'f', 'x', 'v'],
@@ -46,65 +61,12 @@ my %fuzzKeys = ( a => ['a', 'q', 'w', 's', 'z'],
     y => ['y', '6', '7', 't', 'u', 'g', 'h', 'j'],
     z => ['z', 'a', 's', 'x'] );
 
-=begin
-for (keys %fuzzKeys) {
+print "String to search: '$searchString'\n";
 
-    print "$_: $fuzzKeys{$_}\n";
-}
-=cut
+# Grab filename from command line, attempt to open
+open my $fh, '<', $filename or die "Could not open '$filename' $!";
 
-print "String to search: $searchString\n";
-
-#open (MYFILE, '<', $filename) or die "Can't open $filename: $!";
-
-my $file = shift or die "Usage: $0 FILE WORD THRESHOLD\n";
-
-open my $fh, '<', $file or die "Could not open '$file' $!";
-
-# Takes in original %fuzzKeys and converts the values from strings to arrays
-# Input: %fuzzKeys
-# Output: %newFuzzKeys
-
-
-=begin
-
-sub convertFuzzStringsToArrays {
-    my %newHash = ();
-    #my %inputHash = $_[0];
-    my %inputHash = %{$_[0]};
-    my @hashesSplitFull = ();
-    my @hashString = ();
-    my $inc = 0;
-    for (keys %inputHash) {
-        print "\$inputHash{$_} = $inputHash{$_}\n";
-        @hashString = split('', $inputHash{$_}, length($inputHash{$_}));
-        #print "FWEF1 $inc\n";
-        print "\@hashString = @hashString\n";
-        $newHash{$_} = @hashString;
-        my $testLen = length($newHash{$_});
-        print "length(\$newHash{\$_}: $testLen\n";
-        #foreach my $i (0..length($newHash{$_})) {
-        #   print "$i and $newHash{$_}";
-        #   print "$i\n";
-            #print "$newHash{$_}[$i] ";
-            #}
-        $inc ++;
-    }
-
-    #for my $family (keys %newHash) {
-    #print "$family: @{$newHash{$family}}\n";
-        #foreach my $i (0..$newHash{$family}) {
-            #print "     $family: $newHash{$family}[0]\n";
-        #}
-        #}
-}
-
-}
-
-=cut
-
-
-sub testRecurse {
+sub createInitialPermsRecursive {
     # Inputs: current string 
     # Output: array with all perms up from that point onward
 
@@ -126,7 +88,7 @@ sub testRecurse {
     if ($inputString =~ /^.(.+)/) {
         $trailingString = $1;
         #print "trailingString: $trailingString\n";
-        my @trailingArray = testRecurse($trailingString);
+        my @trailingArray = createInitialPermsRecursive($trailingString);
         for my $i (0..@firstCharArray - 1) {
             for my $j (0..@trailingArray - 1) {
                 push (@fullArray, $firstCharArray[$i] . $trailingArray[$j]);
@@ -137,31 +99,6 @@ sub testRecurse {
     else {
         return @firstCharArray;
     }
-
-
-    # TODO: iterate through array without indeces
-    foreach my $nextItem (@{$fuzzKeys{$firstChar}}) {
-        print "without indeces: $nextItem\n";
-    }
-
-    # TODO: iterate through array with indeces
-    foreach my $i (0..@{$fuzzKeys{$firstChar}} - 1) {
-        #print "with index $i: ";
-        #print "$fuzzKeys{$firstChar}[$i]\n";
-    }
-
-    #print "\@firstCharArray: @firstCharArray\n";
-
-
-    #my @appendArray = testRecurse() # args: inputString without current member, index ++ ?
-    # Base case: last char in inputString
-    #   In which case, return array of chars in string
-    # If not base case, for loops:
-    #   for $i in currentArray:
-    #       for $j in appendArray:
-    #           add i + j to mainArray as perm
-    #   return mainArray
-
 }
 
 sub getAccuracy {
@@ -196,12 +133,15 @@ sub getAccuracy {
 }
 
 sub getAllAccuratePerms {
+    # Takes all initial permutations and filters out the ones that don't meet the basic accuracy threshold passed in.
+    # Input: threshold between 0 and 1 <float>, initial permutations <array>, length of initial permutations list
     my $threshold = $_[0];                  # All accuracies >= this value will be added to array
     my $inputPerms = $_[1];                 # Input array of permutations (reference)
     my $totalPerms = @_ - 2;                # Total number of permutations in input array
     my $placeHolderAccuracy = 0;            # Used to determine accuracies to add to return array
     my @returnArray = ();                   # Return array with permutations that are of acceptable accuracy
 
+    # If accuracy of perm passes threshold, add it to @returnArray
     foreach my $i (0..$totalPerms - 1) {
         $placeHolderAccuracy = getAccuracy($inputPerms->[$i]);
         if ($placeHolderAccuracy >= $threshold) {
@@ -211,27 +151,35 @@ sub getAllAccuratePerms {
     return @returnArray;
 }
 
-# convertFuzzStringsToArrays(\%fuzzKeys);
-
-# Given %fuzzKeys, can I directly create all relevant permutations?
-    # answer: hell yeah you can.
-
-
-
-
-#my @recurse = testRecurse("b", $fuzzKeys{'b'});
+# Create initial permutation list
 print "Creating list of all permutations of adjacent keystrokes...\n";
-my @recurse = testRecurse($searchString);
-print @recurse . " permutations created.\nParsing list into most accurate variations...this may take some time.\n";
+my @recurse = createInitialPermsRecursive($searchString);
 
-# TODO: check all accuracies that are greater than given value (in this case, 0.5)
-#getAccuracy($searchString);
+# Handle grammar of singular versus plural (initial perms)
+my $printPerm = "permutations";
+if (@recurse == 1) {
+    $printPerm = "permutation";
+}
+
+# Notify user when initial list has been created
+print "   List created with " . @recurse . " $printPerm.\nParsing list into most accurate variations...this may take some time.\n";
 my @accurates = getAllAccuratePerms($accuracyThreshold, \@recurse, @recurse);
-print "Parsing complete! Final list of typos with accuracy threshold of $accuracyThreshold:\n@accurates\nTotal 'accurate' permutations:" . @accurates . "\n";
 
-print "Searching file for permutations...\n";
+# Handle grammar of singular versus plural (accurate perms)
+my $printPerm2 = "permutations";
+if (@accurates == 1) {
+    $printPerm2 = "permutation";
+}
+
+# Notify user when accurate list has been created
+print "   Parsing complete! Using accuracy threshold of $accuracyThreshold, "
+    . @recurse . " general permutations reduced to "
+    . @accurates . " 'accurate' $printPerm2 (";
+printf("%.3f", (@accurates / @recurse) * 100);
+print "% of original size).\n";
 
 # Find words in input file
+print "Searching file for $printPerm2...\n";
 while (my $line = <$fh>) {
     chomp $line;
     foreach my $perm (@accurates) {
@@ -239,13 +187,45 @@ while (my $line = <$fh>) {
             if ($word ~~ $perm) {
                 $accurateCounts{$word} ++;
                 $totalAccuratesInFile ++;
+
+                # Add to uniqueFoundPerms list if not already there
+                push (@uniqueFoundPerms, $perm);
             }
         }
     }
 }
 
-print "Search complete. Each of the following variations of '$searchString' were found in '$filename':\n";
-for (keys %accurateCounts) {
-    print "'$_': $accurateCounts{$_}\n";
+print "   Search complete. Each of the following variations of '$searchString' were found in '$filename':\n";
+
+#TODO: sort output by accuracy
+
+# Reduce @uniqueFoundPerms to unique set
+sub uniq {
+    my %alreadySeen;
+    grep !$alreadySeen{$_}++, @_;
 }
+@uniqueFoundPerms = uniq(@uniqueFoundPerms);
+
+# Add accuracies to each unique permutation found in file, then sort by accuracy
+foreach my $i (0..@uniqueFoundPerms - 1) {
+    $uniqueFoundPerms[$i] = getAccuracy($uniqueFoundPerms[$i]) . " $uniqueFoundPerms[$i]";
+    #print "  $uniqueFoundPerms[$i]\n";
+}
+@uniqueFoundPerms = sort {$b cmp $a} @uniqueFoundPerms;
+
+my $grabbedPerm;
+#for (keys %accurateCounts) {
+
+# Print header for table
+print "\tPERMUTATION\t\tFREQUENCY\tACCURACY\n";
+
+foreach my $i (0..@uniqueFoundPerms - 1) {
+    $grabbedPerm = $1 if ($uniqueFoundPerms[$i] =~ /\s(\w+)/);
+    #print " GRABBED PERM: $grabbedPerm\n";
+    print "\t'$grabbedPerm'\t\t$accurateCounts{$grabbedPerm}\t\t";
+    #print "\t (accuracy: ";
+    printf ("%.2f", getAccuracy($grabbedPerm) * 100);
+    print "%\n";
+}
+
 print "Total number of appearances, including typos: $totalAccuratesInFile\n";
