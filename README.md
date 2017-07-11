@@ -43,3 +43,11 @@ If a number is not happy, it will fall into the following cycle:
  
 More information on happy numbers can be found [here](https://en.wikipedia.org/wiki/Happy_number).
 
+<h5>Fat-Fingered Word Count (4test_FuzzyWordCount.pl)</h5>
+Word-counting tool that takes a number of typos of a given word into account when searching.
+Based on the original word the user passes in, the program recursively creates permutations of words that are <i>almost</i> the original word based on keys adjacent to the ones used in the original word.
+For example, a search for "cat" would yield searches for "xat", "cst", "car", etc as well.
+The user can pass in a float between 0 and 1 as a threshold for how similar to the original word the permutations must be in order to be searched, calculated by dividing the number of characters that match the original by the total number of characters;
+ a value of 0 will search anything even remotely near the original word, whereas a value of 1 will only accept a perfect match with the original word. If the user puts nothing in, I plan to use a default accuracy threshold of 0.6.
+
+This script is under heavy construction; so far the script will take in a file (with which it currently does nothing) and an input word (no threshold to pass in just yet).
